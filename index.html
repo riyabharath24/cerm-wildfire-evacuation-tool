@@ -1,0 +1,1854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Community Evacuation Resource Matcher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --panel2: #eaeef2;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --text-muted: #656d76;
+    --accent: #cf4b38;
+    --accent2: #0969da;
+    --green: #1a7f37;
+    --yellow: #9a6700;
+    --red: #cf222e;
+    --orange: #bc4c00;
+    --purple: #8250df;
+    --fire: #ff4500;
+    --font-mono: 'Space Mono', monospace;
+    --font-sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-sans); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* HEADER */
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex; align-items: center; gap: 16px;
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+  .logo { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.05em; }
+  .logo span { color: var(--text-muted); font-weight: 400; }
+  .county-tabs { display: flex; gap: 6px; margin-left: auto; }
+  .county-tab {
+    font-family: var(--font-mono); font-size: 11px; padding: 5px 12px;
+    border: 1px solid var(--border); border-radius: 4px; background: transparent;
+    color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+  }
+  .county-tab.active { background: var(--accent2); color: var(--bg); border-color: var(--accent2); font-weight: 700; }
+  .county-tab:hover:not(.active) { border-color: var(--accent2); color: var(--accent2); }
+  .role-badge {
+    font-family: var(--font-mono); font-size: 10px; padding: 4px 10px;
+    border-radius: 20px; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .role-badge.provider { border-color: var(--green); color: var(--green); background: rgba(26,127,55,0.08); }
+  .role-badge.requester { border-color: var(--accent2); color: var(--accent2); background: rgba(9,105,218,0.08); }
+
+  /* LAYOUT */
+  .app-body { display: flex; flex: 1; overflow: hidden; }
+
+  /* MAP */
+  #map { flex: 1; height: 100%; }
+  .leaflet-container { background: #f6f8fa !important; }
+
+  /* LEFT SIDEBAR */
+  .sidebar {
+    width: 300px; flex-shrink: 0; order: 1;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+    transition: width 0.25s ease, opacity 0.25s ease;
+    position: relative;
+  }
+  .sidebar.collapsed { width: 0; overflow: hidden; opacity: 0; padding: 0; }
+  .sidebar-toggle {
+    position: absolute; top: 10px; right: -32px; z-index: 1001;
+    width: 28px; height: 28px; border-radius: 0 6px 6px 0;
+    background: var(--panel); border: 1px solid var(--border); border-left: none;
+    color: var(--text-muted); cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .sidebar-toggle:hover { color: var(--accent2); background: var(--panel2); }
+  .sidebar.collapsed .sidebar-toggle { right: -32px; border-radius: 0 6px 6px 0; }
+
+  /* ROLE SELECTOR */
+  .role-selector {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .role-selector h3 { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+  .role-btns { display: flex; gap: 8px; }
+  .role-btn {
+    flex: 1; padding: 10px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel2);
+    color: var(--text-muted); cursor: pointer; font-family: var(--font-sans);
+    font-size: 13px; font-weight: 500; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .role-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .role-btn.active.provider { border-color: var(--green); color: var(--green); background: rgba(26,127,55,0.08); }
+  .role-btn.active.requester { border-color: var(--accent2); color: var(--accent2); background: rgba(9,105,218,0.08); }
+
+  /* RESOURCE INPUT (appears after role selection) */
+  .resource-input-area {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: none;
+  }
+  .resource-input-area.visible { display: block; }
+  .resource-input-area h4 {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .resource-input-area .loc-input {
+    width: 100%; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font-sans); font-size: 12px;
+    padding: 7px 10px; border-radius: 5px; outline: none;
+    transition: border-color 0.15s; margin-bottom: 8px;
+  }
+  .resource-input-area .loc-input:focus { border-color: var(--accent2); }
+  .resource-input-area .loc-input::placeholder { color: var(--text-muted); }
+  .resource-input-area textarea {
+    width: 100%; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font-sans); font-size: 13px;
+    padding: 9px 12px; border-radius: 6px; outline: none; resize: none;
+    transition: border-color 0.15s; min-height: 70px; max-height: 120px;
+    line-height: 1.4; margin-bottom: 8px;
+  }
+  .resource-input-area textarea:focus { border-color: var(--accent2); }
+  .resource-input-area textarea::placeholder { color: var(--text-muted); }
+  .submit-btn {
+    width: 100%; padding: 10px 16px; background: var(--accent2); border: none;
+    color: #fff; font-family: var(--font-mono); font-size: 12px;
+    font-weight: 700; border-radius: 6px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .submit-btn:hover { background: #0553b1; }
+  .submit-btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+  /* SIDEBAR STATUS / PARSED TAGS */
+  .sidebar-status {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: none;
+  }
+  .sidebar-status.visible { display: block; }
+  .sidebar-status h4 {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .tag { display: inline-block; background: var(--panel2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; font-size: 11px; font-family: var(--font-mono); color: var(--accent); margin: 2px; }
+  .sidebar-fire-warnings {
+    padding: 12px 16px; display: none;
+  }
+  .sidebar-fire-warnings.visible { display: block; }
+  .fire-warning-box {
+    background: rgba(255,69,0,0.08); border: 1px solid var(--fire);
+    border-radius: 8px; padding: 10px 12px; color: #b83200;
+    font-size: 12px; line-height: 1.5;
+  }
+  .fire-warning-box strong { color: var(--fire); }
+
+  /* MIDDLE PANEL (recommendations + requests tabs) */
+  .results-panel {
+    width: 380px; flex-shrink: 0; order: 2;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: none; flex-direction: column;
+    overflow: hidden;
+  }
+  .results-panel.visible { display: flex; }
+  .results-header {
+    padding: 0; border-bottom: 1px solid var(--border);
+    display: flex; align-items: stretch; justify-content: space-between;
+  }
+  .results-tabs {
+    display: flex; flex: 1;
+  }
+  .results-tab {
+    padding: 10px 16px; font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-muted); cursor: pointer; border: none; background: none;
+    border-bottom: 2px solid transparent; transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .results-tab:hover { color: var(--text); }
+  .results-tab.active { color: var(--accent2); border-bottom-color: var(--accent2); font-weight: 700; }
+  .results-tab .tab-badge {
+    display: inline-block; background: var(--accent2); color: #fff;
+    border-radius: 10px; padding: 0 5px; font-size: 9px; margin-left: 4px;
+    font-weight: 700; vertical-align: middle;
+  }
+  .results-close {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 16px; padding: 2px 10px; border-radius: 4px;
+    align-self: center;
+  }
+  .results-close:hover { background: var(--panel2); color: var(--text); }
+  .results-tab-content {
+    flex: 1; overflow-y: auto; padding: 12px 16px;
+    display: none; flex-direction: column; gap: 10px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .results-tab-content.active { display: flex; }
+  .results-show-more {
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .results-show-more label { font-size: 12px; color: var(--text-muted); }
+  .num-input {
+    width: 60px; background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font-mono); font-size: 13px;
+    padding: 4px 8px; border-radius: 4px; text-align: center;
+  }
+
+  /* TRACT CARD */
+  .tract-card {
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; transition: all 0.15s; position: relative;
+  }
+  .tract-card:hover { border-color: var(--accent2); }
+  .tract-card.selected { border-color: var(--green); background: rgba(26,127,55,0.06); }
+  .tract-card.fire-disabled { border-color: var(--fire); background: rgba(255,69,0,0.05); opacity: 0.7; cursor: not-allowed; }
+  .tract-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+  .tract-name { font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.3; }
+  .tract-county { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+  .tract-score { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--yellow); }
+  .tract-stats { display: flex; gap: 6px; flex-wrap: wrap; }
+  .stat-pill {
+    font-size: 10px; font-family: var(--font-mono); padding: 2px 7px;
+    border-radius: 20px; background: var(--panel); border: 1px solid var(--border);
+  }
+  .stat-pill.hands {
+    border-color: var(--accent2); color: var(--accent2);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .stat-pill.hands:hover { background: rgba(9,105,218,0.1); }
+  .select-tract-btn {
+    margin-top: 8px; width: 100%; padding: 6px; border-radius: 5px;
+    border: 1px solid var(--green); background: transparent; color: var(--green);
+    font-family: var(--font-mono); font-size: 11px; cursor: pointer; transition: all 0.15s;
+  }
+  .select-tract-btn:hover { background: rgba(26,127,55,0.1); }
+  .select-tract-btn.deselect { border-color: var(--text-muted); color: var(--text-muted); }
+
+  /* REQUEST DETAILS DROPDOWN */
+  .request-details {
+    margin-top: 8px; display: none; border-top: 1px solid var(--border); padding-top: 8px;
+  }
+  .request-details.visible { display: block; }
+  .request-details-title {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+  }
+  .request-item {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 5px; font-size: 12px; line-height: 1.4;
+    color: var(--text);
+  }
+  .request-item .req-type {
+    font-family: var(--font-mono); font-size: 10px; color: var(--accent2);
+    margin-bottom: 3px;
+  }
+  .request-item .req-text { color: var(--text-muted); font-size: 11px; }
+  .request-item .req-address { color: var(--text-muted); font-size: 10px; margin-top: 3px; font-style: italic; }
+  .request-item { position: relative; }
+  .req-remove-btn {
+    position: absolute; top: 6px; right: 6px;
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text-muted); cursor: pointer; font-size: 11px;
+    padding: 1px 5px; line-height: 1; transition: all 0.15s;
+  }
+  .req-remove-btn:hover { background: rgba(207,34,46,0.1); border-color: var(--red); color: var(--red); }
+
+  /* Request status badges */
+  .req-status {
+    display: inline-block; font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    padding: 1px 7px; border-radius: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+    margin-left: 6px; vertical-align: middle;
+  }
+  .req-status.unsolved { background: rgba(207,34,46,0.1); color: var(--red); border: 1px solid var(--red); }
+  .req-status.in-progress { background: rgba(227,167,25,0.12); color: #b58a00; border: 1px solid #d4a017; }
+  .req-status.solved { background: rgba(26,127,55,0.1); color: var(--green); border: 1px solid var(--green); }
+
+  /* Request action buttons */
+  .req-actions { display: flex; gap: 4px; margin-top: 6px; }
+  .req-action-btn {
+    font-family: var(--font-mono); font-size: 10px; padding: 3px 10px;
+    border-radius: 4px; border: 1px solid var(--border); background: var(--panel);
+    color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+  }
+  .req-action-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .req-action-btn.accept:hover { border-color: #d4a017; color: #b58a00; background: rgba(227,167,25,0.08); }
+  .req-action-btn.solve:hover { border-color: var(--green); color: var(--green); background: rgba(26,127,55,0.08); }
+  .req-action-btn.cancel:hover { border-color: var(--red); color: var(--red); background: rgba(207,34,46,0.08); }
+
+  /* Solved request styling */
+  .request-item.solved { opacity: 0.55; }
+  .filter-bar {
+    display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 8px 0; margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-tag {
+    display: inline-block; padding: 3px 10px; border-radius: 14px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--panel2); color: var(--text-muted);
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .filter-tag:hover { border-color: var(--accent2); color: var(--accent2); }
+  .filter-tag.active { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+  .filter-tag.clear-btn { background: transparent; border-color: var(--text-muted); color: var(--text-muted); }
+  .filter-tag.clear-btn:hover { border-color: var(--red); color: var(--red); }
+  .helper-otw-tag {
+    display: inline-block; background: rgba(26,127,55,0.1); border: 1px solid var(--green);
+    color: var(--green); font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 12px; margin-bottom: 6px; letter-spacing: 0.03em;
+  }
+
+  /* LOADING */
+  .loading-dots { display: flex; gap: 4px; padding: 8px 0; justify-content: center; }
+  .sidebar-loading { padding: 16px; display: none; }
+  .sidebar-loading.visible { display: block; }
+
+  /* LEGEND — anchored to the map, not the page */
+  #map { position: relative; }
+  .map-legend {
+    position: absolute; bottom: 20px; left: 20px; z-index: 999;
+    background: rgba(255,255,255,0.95); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; backdrop-filter: blur(8px);
+    min-width: 160px;
+  }
+  .legend-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; color: var(--text); }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); animation: pulse 1.2s infinite; }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse { 0%,80%,100%{opacity:0.3;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+
+  /* FIRE OVERLAY */
+  .fire-banner {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+    z-index: 2000; background: rgba(255,69,0,0.9); color: white;
+    padding: 8px 20px; border-radius: 20px; font-family: var(--font-mono);
+    font-size: 12px; font-weight: 700; pointer-events: none;
+    animation: fadeIn 0.5s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;top:50px} to{opacity:1;top:60px} }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* MAP POPUP */
+  .leaflet-popup-content-wrapper {
+    background: var(--panel2) !important; color: var(--text) !important;
+    border: 1px solid var(--border) !important; border-radius: 8px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important;
+  }
+  .leaflet-popup-tip { background: var(--panel2) !important; }
+  .leaflet-popup-content { font-family: var(--font-sans); font-size: 12px; line-height: 1.5; }
+  .popup-title { font-weight: 600; color: var(--accent2); margin-bottom: 6px; font-size: 13px; }
+  .popup-stat { color: var(--text-muted); }
+  .popup-stat span { color: var(--text); }
+  .popup-fire { color: var(--fire); font-weight: 600; margin-top: 6px; }
+  .popup-hands { color: var(--accent2); transition: opacity 0.15s; }
+  .popup-hands:hover { opacity: 0.7; }
+
+  .hands-marker {
+    background: transparent; border: none;
+  }
+  .hands-bubble {
+    background: rgba(9,105,218,0.9); color: #ffffff;
+    border-radius: 50%; width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    border: 2px solid white; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .hands-bubble.fire { background: rgba(255,69,0,0.9); color: white; }
+  .hands-bubble.requester-own { background: rgba(207,34,46,0.95); color: white; border-color: #ff6b6b; }
+
+  .provider-selected-marker {
+    background: rgba(26,127,55,0.15) !important;
+    border-color: var(--green) !important;
+  }
+
+  /* TRACT HOVER TOOLTIP */
+  .tract-tooltip {
+    background: #ffffff !important; color: #1f2328 !important;
+    border: 1px solid #d0d7de !important; border-radius: 8px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+    padding: 6px 10px !important;
+  }
+  .tract-tooltip .leaflet-tooltip-tip { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🔥 CERM <span>/ Community Evacuation Resource Matcher</span></div>
+  <div class="county-tabs">
+    <button class="county-tab active" onclick="flyToCounty('Butte')">Butte</button>
+    <button class="county-tab" onclick="flyToCounty('Shasta')">Shasta</button>
+    <button class="county-tab" onclick="flyToCounty('Riverside')">Riverside</button>
+  </div>
+  <div class="role-badge" id="role-badge-header">No role selected</div>
+</header>
+
+<div class="app-body">
+  <!-- LEFT SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">◀</button>
+
+    <div class="role-selector">
+      <h3>I am a...</h3>
+      <div class="role-btns">
+        <button class="role-btn provider" id="btn-provider" onclick="setRole('provider')">🤝 Helper</button>
+        <button class="role-btn requester" id="btn-requester" onclick="setRole('requester')">🙋 Requester</button>
+      </div>
+    </div>
+
+    <!-- Resource input (appears after role selection) -->
+    <div class="resource-input-area" id="resource-input-area">
+      <h4 id="resource-input-title">Describe your resources</h4>
+      <input type="text" class="loc-input" id="location-input" placeholder="123 Main St, City, CA">
+      <textarea id="resource-textarea" placeholder="e.g. I have 2 cars, bottled water, can help elderly" rows="3"></textarea>
+      <button class="submit-btn" id="submit-btn" onclick="handleSend()">SUBMIT</button>
+    </div>
+
+    <!-- Parsed tags status -->
+    <div class="sidebar-status" id="sidebar-status">
+      <h4>Why These Tracts?</h4>
+      <div id="parsed-tags"></div>
+    </div>
+
+    <!-- Loading indicator -->
+    <div class="sidebar-loading" id="sidebar-loading">
+      <div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    </div>
+
+    <!-- Fire warnings -->
+    <div class="sidebar-fire-warnings visible" id="sidebar-fire-warnings">
+      <div class="fire-warning-box">
+        🔥 <strong>3 Fire Zones Active</strong><br>
+        Butte: Census Tract 21<br>
+        Shasta: Census Tract 121.02<br>
+        Riverside: Census Tract 451.17<br>
+        <span style="font-size:11px;color:#656d76;">These tracts are disabled.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MIDDLE PANEL (recommendations + requests tabs) -->
+  <div class="results-panel" id="results-panel">
+    <div class="results-header">
+      <div class="results-tabs">
+        <button class="results-tab active" id="tab-recs" onclick="switchResultsTab('recs')">Recommendations</button>
+        <button class="results-tab" id="tab-requests" onclick="switchResultsTab('requests')" style="display:none;">
+          Requests <span class="tab-badge" id="requests-tab-badge">0</span>
+        </button>
+      </div>
+      <button class="results-close" onclick="closeResultsPanel()">✕</button>
+    </div>
+    <div class="results-tab-content active" id="tab-content-recs"></div>
+    <div class="results-tab-content" id="tab-content-requests"></div>
+    <div class="results-show-more" id="results-show-more" style="display:none;">
+      <label>Show tracts:</label>
+      <input type="number" class="num-input" id="num-show-input" value="3" min="1" max="20"
+        onchange="updateNumShow(parseInt(this.value))">
+      <label>/ 20</label>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map-wrapper" style="flex:1;position:relative;order:3;">
+  <div id="map" style="width:100%;height:100%;"></div>
+  <div class="map-legend">
+    <div class="legend-title">Map Legend</div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#b8c9d9"></div> Census tract</div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#ff4500"></div> Fire zone</div>
+    <div class="legend-row"><div class="legend-swatch" style="border:3px solid #cf222e;background:#fff"></div> Suggested tract</div>
+    <div class="legend-row"><div class="legend-swatch" style="background:#1a7f37"></div> Your selection</div>
+  </div>
+  </div><!-- /map-wrapper -->
+</div>
+
+<script>
+// ===== DATA =====
+let TRACT_DATA = [];
+let GEOJSON = null;
+
+async function loadData() {
+  const resp = await fetch('wildfire_community_tracts.geojson');
+  GEOJSON = await resp.json();
+
+  // Build TRACT_DATA from GeoJSON features, computing centroids from polygons
+  TRACT_DATA = GEOJSON.features.map(f => {
+    const p = f.properties;
+    // Compute centroid from geometry coordinates
+    let clat = 0, clon = 0, count = 0;
+    const coords = f.geometry.type === 'MultiPolygon'
+      ? f.geometry.coordinates.flat(1)
+      : f.geometry.coordinates;
+    coords[0].forEach(([lng, lat]) => { clat += lat; clon += lng; count++; });
+    clat /= count; clon /= count;
+
+    return {
+      geoid: p.GEOID,
+      name: p.NAME,
+      county: p.county_name,
+      pop: p['Total Population'],
+      pct_elderly: p['Percent of Households with Elderly'],
+      pct_disability: p['Percent of Population with Disability'],
+      pct_novehicle: p['Percent of Households without Vehicle'],
+      flag_elderly: p.flag_high_elderly,
+      flag_disability: p.flag_high_disability,
+      flag_novehicle: p.flag_low_vehicle_access,
+      total_flags: p.total_flags,
+      tier: p.preparedness_tier,
+      clat, clon
+    };
+  });
+
+  // Build GEOID → tract lookup
+  TRACT_DATA.forEach(t => tractByGeoid[t.geoid] = t);
+}
+
+const FIRE_TRACTS = {
+  'Butte':     '06007000700',
+  'Shasta':    '06089010806',
+  'Riverside': '06065040402'
+};
+
+const COUNTY_CENTERS = {
+  'Butte':     [39.677, -121.722],
+  'Shasta':    [40.590, -122.300],
+  'Riverside': [33.802, -117.007]
+};
+
+const COUNTY_ZOOM = { 'Butte': 11, 'Shasta': 11, 'Riverside': 10 };
+
+const tractByGeoid = {};
+
+// ===== STATE =====
+let currentRole = null;
+let currentCounty = 'Butte';
+let raisedHands = {};       // geoid → count
+let selectedTracts = new Set(); // provider's selected tracts (local)
+let helperOnTheWay = new Set(); // geoids where a helper has committed to go
+let activeRequestFilter = null; // currently active tag filter for requests view
+let mySubmittedRequestIds = new Set();  // all request_ids submitted by this user
+let mySubmittedGeoids = new Set();      // all geoids where current user has requests
+let offerParsed = null;
+let recommendedTracts = [];
+let numToShow = 3;
+let chatHistory = [];
+let geojsonLayer = null;
+let handsMarkers = {};
+let lastBubbleClickTime = 0;
+let isProcessing = false;
+let clickedTractLayer = null; // track the currently clicked/darkened tract layer
+
+const DEEPSEEK_KEY = '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'; // replace with actual key
+
+// ===== SIMULATE RAISED HANDS =====
+// Fallback sample request templates for when CSV fails to load
+const FALLBACK_REQUEST_TEMPLATES = [
+  { type: 'Transportation', text: 'Need ride for elderly family member to evacuation shelter', service_tags: ['transportation'] },
+  { type: 'Transportation', text: 'Family of 4, no vehicle, need transport to safety', service_tags: ['transportation'] },
+  { type: 'Transportation', text: 'Wheelchair-bound senior needs accessible vehicle', service_tags: ['transportation', 'mobility_assistance'] },
+  { type: 'Medical', text: 'Need help moving oxygen equipment and medical supplies', service_tags: ['medical', 'volunteer_labor'] },
+  { type: 'Medical', text: 'Diabetic resident needs refrigerated medication transport', service_tags: ['medical', 'transportation'] },
+  { type: 'Food & Water', text: 'Family needs water and non-perishable food for 3 days', service_tags: ['food_distribution'] },
+  { type: 'Food & Water', text: 'Need baby formula and diapers for infant', service_tags: ['food_distribution'] },
+  { type: 'Mobility Help', text: 'Need volunteers to help carry belongings down stairs', service_tags: ['mobility_assistance', 'volunteer_labor'] },
+  { type: 'Mobility Help', text: 'Disabled veteran needs help packing and evacuating', service_tags: ['mobility_assistance'] },
+  { type: 'Supplies', text: 'Need clothing and blankets for family of 5', service_tags: ['volunteer_labor'] },
+  { type: 'Supplies', text: 'Need flashlights, batteries, and first aid kit', service_tags: ['volunteer_labor'] },
+  { type: 'Childcare', text: 'Need someone to watch children while parents evacuate belongings', service_tags: ['childcare'] },
+  { type: 'General', text: 'Need help boarding up windows before evacuation', service_tags: ['general', 'volunteer_labor'] },
+  { type: 'General', text: 'Need help loading truck with essential belongings', service_tags: ['general', 'volunteer_labor'] },
+];
+
+function simulateRaisedHands() {
+  raisedHands = {};
+  const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+  TRACT_DATA.forEach(t => {
+    if (fireGeoids.has(t.geoid)) { raisedHands[t.geoid] = 0; return; }
+    const baseRate = 1.5;
+    const lambda = baseRate * (1 + t.total_flags * 0.8);
+    const count = poissonRandom(lambda);
+    raisedHands[t.geoid] = count;
+    // Also generate matching tractRequests so counts are in sync
+    if (count > 0 && !tractRequests[t.geoid]) {
+      tractRequests[t.geoid] = [];
+      let hash = 0;
+      for (let i = 0; i < t.geoid.length; i++) hash = ((hash << 5) - hash + t.geoid.charCodeAt(i)) | 0;
+      for (let i = 0; i < count; i++) {
+        const idx = Math.abs((hash + i * 7 + i * i) % FALLBACK_REQUEST_TEMPLATES.length);
+        tractRequests[t.geoid].push({
+          request_id: `SIM-${t.geoid}-${i}`,
+          status: 'unsolved',
+          address: '',
+          ...FALLBACK_REQUEST_TEMPLATES[idx]
+        });
+      }
+    }
+  });
+}
+
+function poissonRandom(lambda) {
+  let L = Math.exp(-lambda), k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L);
+  return k - 1;
+}
+
+// ===== MAP SETUP =====
+const map = L.map('map', {
+  center: [39.677, -121.722],
+  zoom: 10,
+  zoomControl: true,
+  attributionControl: false
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19, subdomains: 'abcd'
+}).addTo(map);
+
+// Track which tracts are currently recommended
+let recommendedGeoids = new Set();
+
+// User location pin
+let userLocationMarker = null;
+function setUserLocationPin(latLon, label) {
+  if (userLocationMarker) { userLocationMarker.remove(); userLocationMarker = null; }
+  if (!latLon) return;
+  const icon = L.divIcon({
+    className: 'user-pin',
+    html: `<div style="display:flex;flex-direction:column;align-items:center;">
+      <div style="background:var(--accent2);color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;white-space:nowrap;font-family:var(--font-sans);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,0.2);">${label}</div>
+      <div style="font-size:24px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">📍</div>
+    </div>`,
+    iconSize: [80, 40], iconAnchor: [40, 40]
+  });
+  userLocationMarker = L.marker(latLon, { icon, zIndexOffset: 1000 }).addTo(map);
+}
+
+function getFillColor(t) {
+  const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+  if (fireGeoids.has(t.geoid)) return '#ff4500';
+  if (selectedTracts.has(t.geoid)) return '#1a7f37';
+  return '#b8c9d9';
+}
+
+function getFillOpacity(t) {
+  const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+  if (fireGeoids.has(t.geoid)) return 0.55;
+  if (selectedTracts.has(t.geoid)) return 0.35;
+  return 0.25;
+}
+
+function getBorderStyle(t) {
+  if (recommendedGeoids.has(t.geoid)) {
+    return { color: '#cf222e', weight: 3, opacity: 1 };
+  }
+  return { color: '#d0d7de', weight: 0.5, opacity: 0.8 };
+}
+
+function buildPopup(t) {
+  const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+  const isFire = fireGeoids.has(t.geoid);
+  const hands = raisedHands[t.geoid] || 0;
+  const isSelected = selectedTracts.has(t.geoid);
+  const isProvider = currentRole === 'provider';
+  const elderly = Math.round(t.pop * t.pct_elderly / 100);
+  const disability = Math.round(t.pop * t.pct_disability / 100);
+  const novehicle = Math.round(t.pop * t.pct_novehicle / 100);
+  const selectBtn = (!isFire && isProvider) ? `
+    <button onclick="popupToggleSelect('${t.geoid}')" id="popup-select-btn-${t.geoid}"
+      style="margin-top:8px;width:100%;padding:6px 10px;border-radius:5px;
+             border:1px solid ${isSelected ? 'var(--text-muted)' : 'var(--green)'};
+             background:transparent;color:${isSelected ? 'var(--text-muted)' : 'var(--green)'};
+             font-family:var(--font-mono);font-size:11px;cursor:pointer;">
+      ${isSelected ? '✓ Deselect tract' : '+ Select — I will go here'}
+    </button>` : '';
+  return `
+    <div class="popup-title">${t.name.split(';')[0]}</div>
+    <div class="popup-stat">County: <span>${t.county}</span></div>
+    <div class="popup-stat">Population: <span>${t.pop.toLocaleString()}</span></div>
+    <div class="popup-stat">👴 Elderly: <span>${elderly.toLocaleString()} (${t.pct_elderly}%)</span></div>
+    <div class="popup-stat">♿ Disability: <span>${disability.toLocaleString()} (${t.pct_disability}%)</span></div>
+    <div class="popup-stat">🚗 No vehicle: <span>${novehicle.toLocaleString()} (${t.pct_novehicle}%)</span></div>
+    ${isFire ? '<div class="popup-fire">🔥 FIRE ZONE — functions disabled</div>' : `<div class="popup-hands" onclick="map.closePopup(); showRequestsTab('${t.geoid}')" style="cursor:pointer;text-decoration:underline;" title="Click to view requests">🙋 Active requests: ${hands} ▾</div>`}
+    ${selectBtn}
+  `;
+}
+
+function popupToggleSelect(geoid) {
+  const t = tractByGeoid[geoid];
+  if (!t) return;
+  toggleSelectTract(geoid);
+  // Re-open the popup with updated button state
+  map.closePopup();
+  if (geojsonLayer) {
+    geojsonLayer.eachLayer(layer => {
+      if (layer.feature && layer.feature.properties.GEOID === geoid) {
+        layer.bindPopup(buildPopup(t)).openPopup();
+      }
+    });
+  }
+}
+
+function renderMap() {
+  if (geojsonLayer) geojsonLayer.remove();
+  geojsonLayer = L.geoJSON(GEOJSON, {
+    style: (feature) => {
+      const t = tractByGeoid[feature.properties.GEOID];
+      const border = getBorderStyle(t);
+      return {
+        fillColor: getFillColor(t),
+        fillOpacity: getFillOpacity(t),
+        color: border.color,
+        weight: border.weight,
+        opacity: border.opacity
+      };
+    },
+    onEachFeature: (feature, layer) => {
+      const t = tractByGeoid[feature.properties.GEOID];
+      if (!t) return;
+      layer.on('click', () => {
+        // Skip if a hands bubble was just clicked (prevents double-fire overwriting correct content)
+        if (Date.now() - lastBubbleClickTime < 500) return;
+
+        // Clear previous clicked tract styling
+        clearClickedTract();
+
+        const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+        if (fireGeoids.has(t.geoid)) {
+          // Fire zone — show warning in results panel
+          showFireZoneMessage(t);
+          return;
+        }
+
+        // In requester mode, only allow clicking own tracts
+        if (currentRole === 'requester' && !mySubmittedGeoids.has(t.geoid)) return;
+
+        // Darken the clicked tract (persistent highlight)
+        layer.setStyle({ fillOpacity: 0.4, weight: 1.5, color: '#9ca3af' });
+        clickedTractLayer = { layer, tract: t };
+
+        // Show requests panel for this tract
+        showTractRequestsPanel(t.geoid);
+      });
+      // Hover: show summary tooltip + highlight
+      layer.on('mouseover', (e) => {
+        const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+        if (!fireGeoids.has(t.geoid) && !selectedTracts.has(t.geoid) && !recommendedGeoids.has(t.geoid)) {
+          layer.setStyle({ fillOpacity: 0.4, weight: 1.5, color: '#9ca3af' });
+        }
+        const hands = raisedHands[t.geoid] || 0;
+        const elderly = Math.round(t.pop * t.pct_elderly / 100);
+        const disability = Math.round(t.pop * t.pct_disability / 100);
+        const novehicle = Math.round(t.pop * t.pct_novehicle / 100);
+        const isFire = new Set(Object.values(FIRE_TRACTS)).has(t.geoid);
+        layer.bindTooltip(`
+          <div style="font-family:var(--font-sans);font-size:12px;line-height:1.6;min-width:160px;">
+            <strong style="color:var(--accent2);">${t.name.split(';')[0]}</strong><br>
+            ${t.county} County &bull; Pop ${t.pop.toLocaleString()}<br>
+            <span style="color:#656d76;">👴 Elderly:</span> ${elderly.toLocaleString()} (${t.pct_elderly}%)<br>
+            <span style="color:#656d76;">♿ Disability:</span> ${disability.toLocaleString()} (${t.pct_disability}%)<br>
+            <span style="color:#656d76;">🚗 No vehicle:</span> ${novehicle.toLocaleString()} (${t.pct_novehicle}%)<br>
+            ${isFire ? '<span style="color:#ff4500;font-weight:600;">🔥 Fire Zone</span>' : `<span style="color:#0969da;">🙋 ${hands} active request${hands !== 1 ? 's' : ''}</span>`}
+          </div>
+        `, { sticky: true, direction: 'top', offset: [0, -10], className: 'tract-tooltip' }).openTooltip();
+      });
+      layer.on('mouseout', (e) => {
+        // Don't reset styling if this is the currently clicked tract
+        if (clickedTractLayer && clickedTractLayer.tract.geoid === t.geoid) {
+          layer.unbindTooltip();
+          return;
+        }
+        const border = getBorderStyle(t);
+        layer.setStyle({
+          fillColor: getFillColor(t), fillOpacity: getFillOpacity(t),
+          color: border.color, weight: border.weight, opacity: border.opacity
+        });
+        layer.unbindTooltip();
+      });
+    }
+  }).addTo(map);
+  renderHandsMarkers();
+}
+
+function renderHandsMarkers() {
+  Object.values(handsMarkers).forEach(m => m.remove());
+  handsMarkers = {};
+  const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+  const isRequesterMode = currentRole === 'requester';
+  TRACT_DATA.forEach(t => {
+    if (t.county !== currentCounty) return;
+    const count = raisedHands[t.geoid] || 0;
+    if (count === 0) return;
+    const isFire = fireGeoids.has(t.geoid);
+    const isOwnTract = mySubmittedGeoids.has(t.geoid);
+    // In requester mode, show all bubbles but block clicking non-own tracts
+
+    const icon = L.divIcon({
+      className: 'hands-marker',
+      html: `<div class="hands-bubble${isFire ? ' fire' : (isOwnTract ? ' requester-own' : '')}">${isFire ? '🔥' : count}</div>`,
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    const m = L.marker([t.clat, t.clon], { icon, bubblingMouseEvents: false, interactive: true }).addTo(map);
+    // Clicking the hands bubble opens the requests panel for this tract
+    m.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (!isFire) {
+        // In requester mode, only allow clicking own tracts
+        if (isRequesterMode && !mySubmittedGeoids.has(t.geoid)) return;
+        lastBubbleClickTime = Date.now();
+        showTractRequestsPanel(t.geoid);
+      }
+    });
+    handsMarkers[t.geoid] = m;
+  });
+}
+
+// ===== CLEAR CLICKED TRACT HIGHLIGHT =====
+function clearClickedTract() {
+  if (clickedTractLayer) {
+    const t = clickedTractLayer.tract;
+    const border = getBorderStyle(t);
+    clickedTractLayer.layer.setStyle({
+      fillColor: getFillColor(t), fillOpacity: getFillOpacity(t),
+      color: border.color, weight: border.weight, opacity: border.opacity
+    });
+    clickedTractLayer = null;
+  }
+}
+
+// ===== FIRE ZONE MESSAGE =====
+function showFireZoneMessage(t) {
+  const panel = document.getElementById('results-panel');
+  const recsContent = document.getElementById('tab-content-recs');
+  const reqsContent = document.getElementById('tab-content-requests');
+
+  // Hide tabs, show message directly in recs content area
+  document.getElementById('tab-recs').style.display = 'none';
+  document.getElementById('tab-requests').style.display = 'none';
+  document.getElementById('results-show-more').style.display = 'none';
+
+  recsContent.innerHTML = `
+    <div style="text-align:center;padding:24px 16px;">
+      <div style="font-size:32px;margin-bottom:12px;">🔥</div>
+      <div style="font-weight:600;color:var(--red);font-size:14px;margin-bottom:8px;">${t.name.split(';')[0]}</div>
+      <div style="color:var(--text-muted);font-size:12px;line-height:1.6;">
+        Functionality for this tract is disabled since this is designated as a fire-evacuation area. Please contact <strong style="color:var(--text);">911</strong> for emergency help.
+      </div>
+    </div>
+  `;
+  recsContent.classList.add('active');
+  reqsContent.classList.remove('active');
+  panel.classList.add('visible');
+  setTimeout(() => map.invalidateSize(), 300);
+}
+
+// ===== SHOW REQUESTS FOR A TRACT IN SIDE PANEL =====
+// Now delegates to the tab-based system
+function showTractRequestsPanel(geoid) {
+  showRequestsTab(geoid);
+}
+
+// ===== REQUEST DATA FROM CSV =====
+const tractRequests = {}; // geoid → [{request_id, type, text}, ...]
+let csvLoaded = false;
+
+async function loadRequestsCSV() {
+  try {
+    const resp = await fetch('requests.csv');
+    const text = await resp.text();
+    const lines = text.trim().split('\n');
+    const header = parseCSVLine(lines[0]);
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseCSVLine(lines[i]);
+      if (cols.length < 6) continue;
+      const geoid = cols[1];
+      const tagStr = cols[6] || '';
+      const serviceTags = tagStr ? tagStr.split(/[|;]/) : [];
+      const address = cols[7] || '';
+      const req = { request_id: cols[0], type: cols[4], text: cols[5], status: 'unsolved', address: address, service_tags: serviceTags, resource_tags: [], beneficiary_tags: [] };
+      if (!tractRequests[geoid]) tractRequests[geoid] = [];
+      tractRequests[geoid].push(req);
+    }
+    // Update raisedHands counts from CSV
+    raisedHands = {};
+    const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+    for (const geoid in tractRequests) {
+      if (!fireGeoids.has(geoid)) {
+        raisedHands[geoid] = tractRequests[geoid].length;
+      }
+    }
+    // Ensure all tracts have an entry
+    TRACT_DATA.forEach(t => {
+      if (!(t.geoid in raisedHands)) raisedHands[t.geoid] = 0;
+    });
+    csvLoaded = true;
+    renderMap();
+    console.log('Loaded requests.csv:', Object.keys(tractRequests).length, 'tracts with requests');
+  } catch(e) {
+    console.warn('Could not load requests.csv, using simulated data:', e);
+    simulateRaisedHands();
+    renderMap();
+  }
+}
+
+// Simple CSV line parser that handles quoted fields
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+    else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+
+function getRequestsForTract(geoid) {
+  return tractRequests[geoid] || [];
+}
+
+// ===== SIDEBAR TOGGLE =====
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const btn = document.getElementById('sidebar-toggle');
+  sidebar.classList.toggle('collapsed');
+  btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+  setTimeout(() => map.invalidateSize(), 300);
+}
+
+// ===== ROLE =====
+function setRole(role) {
+  currentRole = role;
+  // Remove previous role's location pin
+  setUserLocationPin(null);
+  document.getElementById('btn-provider').classList.toggle('active', role === 'provider');
+  document.getElementById('btn-requester').classList.toggle('active', role === 'requester');
+  document.getElementById('role-badge-header').className = `role-badge ${role}`;
+  document.getElementById('role-badge-header').textContent = role === 'provider' ? '🤝 Helper' : '🙋 Requester';
+
+  const resArea = document.getElementById('resource-input-area');
+  const textarea = document.getElementById('resource-textarea');
+  const title = document.getElementById('resource-input-title');
+
+  resArea.classList.add('visible');
+
+  if (role === 'provider') {
+    title.textContent = 'Describe your resources';
+    textarea.placeholder = "e.g. I have 2 cars, bottled water, can help elderly";
+  } else {
+    title.textContent = 'Describe what you need';
+    textarea.placeholder = "e.g. Need transportation, I'm at 123 Oak St, Redding";
+  }
+
+  // Clear text input when switching roles
+  textarea.value = '';
+
+  // Close results panel when switching roles
+  closeResultsPanel();
+  document.getElementById('sidebar-status').classList.remove('visible');
+}
+
+// ===== DEEPSEEK LLM CALL =====
+async function callDeepSeek(userText) {
+  const systemPrompt = `You are a semantic extraction engine for an emergency resource matching system.
+Given a helper's free-text offer description, extract structured data and return ONLY valid JSON (no markdown, no explanation).
+
+Return this exact JSON structure:
+{
+  "offer_type": "goods|services|mixed",
+  "service_tags": [],
+  "resource_tags": [],
+  "beneficiary_tags": [],
+  "capacity_people": null,
+  "capacity_notes": ""
+}
+
+service_tags options: transportation, mobility_assistance, heavy_lifting, medical, food_distribution, volunteer_labor, childcare
+resource_tags options: water, food, medicine, clothing, fuel, equipment, tools, first_aid
+beneficiary_tags options: elderly, disability, no_vehicle, families, children, general
+
+Be generous in tagging. Extract all relevant tags.`;
+
+  try {
+    const resp = await fetch("https://router.huggingface.co/novita/v3/openai/chat/completions", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'deepseek/deepseek-v3-0324',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userText }
+        ],
+        max_tokens: 400,
+        temperature: 0.1
+      })
+    });
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    console.error('DeepSeek error:', e);
+    // Fallback: simple rule-based extraction
+    return fallbackExtract(userText);
+  }
+}
+
+function fallbackExtract(text) {
+  const lower = text.toLowerCase();
+  const tags = { service_tags: [], resource_tags: [], beneficiary_tags: [] };
+  if (lower.includes('car') || lower.includes('transport') || lower.includes('drive') || lower.includes('vehicle')) tags.service_tags.push('transportation');
+  if (lower.includes('water')) tags.resource_tags.push('water');
+  if (lower.includes('food') || lower.includes('meal')) tags.resource_tags.push('food');
+  if (lower.includes('medic') || lower.includes('nurse') || lower.includes('doctor')) { tags.service_tags.push('medical'); tags.resource_tags.push('medicine'); }
+  if (lower.includes('elderly') || lower.includes('senior') || lower.includes('old')) tags.beneficiary_tags.push('elderly');
+  if (lower.includes('disab') || lower.includes('wheelchair') || lower.includes('mobility')) { tags.beneficiary_tags.push('disability'); tags.service_tags.push('mobility_assistance'); }
+  if (lower.includes('no vehicle') || lower.includes('no car')) tags.beneficiary_tags.push('no_vehicle');
+  if (tags.beneficiary_tags.length === 0) tags.beneficiary_tags = ['general'];
+  const capacityMatch = text.match(/(\d+)\s*(people|persons|volunteers|individuals)/i);
+  return {
+    offer_type: tags.resource_tags.length > 0 && tags.service_tags.length > 0 ? 'mixed' : tags.service_tags.length > 0 ? 'services' : 'goods',
+    ...tags,
+    capacity_people: capacityMatch ? parseInt(capacityMatch[1]) : null,
+    capacity_notes: ''
+  };
+}
+
+// ===== DEEPSEEK LLM CALL — REQUEST PARSING =====
+async function callDeepSeekRequest(userText) {
+  const systemPrompt = `You are a semantic extraction engine for an emergency resource matching system.
+Given a requester's free-text help request, split it into one or more distinct requests and tag each one. Return ONLY valid JSON (no markdown, no explanation).
+
+Return this exact JSON structure:
+{
+  "requests": [
+    {
+      "type": "string",
+      "text": "string",
+      "service_tags": [],
+      "resource_tags": [],
+      "beneficiary_tags": []
+    }
+  ]
+}
+
+For "type" use one of: Transportation, Medical, Food & Water, Supplies, Mobility Help, Childcare, General
+
+service_tags options: transportation, mobility_assistance, heavy_lifting, medical, food_distribution, volunteer_labor, childcare
+resource_tags options: water, food, medicine, clothing, fuel, equipment, tools, first_aid
+beneficiary_tags options: elderly, disability, no_vehicle, families, children, general
+
+IMPORTANT: If the text contains multiple distinct needs (e.g. "I need a ride and also food"), split them into SEPARATE request objects. Each request should have its own type and tags.
+Be generous in tagging. Extract all relevant tags.`;
+
+  try {
+    const resp = await fetch("https://router.huggingface.co/novita/v3/openai/chat/completions", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'deepseek/deepseek-v3-0324',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userText }
+        ],
+        max_tokens: 600,
+        temperature: 0.1
+      })
+    });
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    console.error('DeepSeek request parse error:', e);
+    return fallbackExtractRequest(userText);
+  }
+}
+
+function fallbackExtractRequest(text) {
+  const lower = text.toLowerCase();
+  const requests = [];
+  const base = { beneficiary_tags: ['general'] };
+
+  if (lower.includes('car') || lower.includes('transport') || lower.includes('drive') || lower.includes('ride') || lower.includes('vehicle')) {
+    requests.push({ type: 'Transportation', text: text, service_tags: ['transportation'], resource_tags: [], ...base });
+  }
+  if (lower.includes('food') || lower.includes('meal') || lower.includes('hungry') || lower.includes('eat')) {
+    requests.push({ type: 'Food & Water', text: text, service_tags: ['food_distribution'], resource_tags: ['food'], ...base });
+  }
+  if (lower.includes('water') || lower.includes('drink')) {
+    requests.push({ type: 'Food & Water', text: text, service_tags: ['food_distribution'], resource_tags: ['water'], ...base });
+  }
+  if (lower.includes('medic') || lower.includes('doctor') || lower.includes('nurse') || lower.includes('insulin') || lower.includes('oxygen') || lower.includes('injur')) {
+    requests.push({ type: 'Medical', text: text, service_tags: ['medical'], resource_tags: ['medicine'], ...base });
+  }
+  if (lower.includes('child') || lower.includes('kid') || lower.includes('babysit')) {
+    requests.push({ type: 'Childcare', text: text, service_tags: ['childcare'], resource_tags: [], ...base });
+  }
+  if (lower.includes('disab') || lower.includes('wheelchair') || lower.includes('mobility') || lower.includes('packing')) {
+    requests.push({ type: 'Mobility Help', text: text, service_tags: ['mobility_assistance'], resource_tags: [], ...base });
+  }
+  if (lower.includes('tarp') || lower.includes('cloth') || lower.includes('suppli') || lower.includes('toiletri') || lower.includes('equipment')) {
+    requests.push({ type: 'Supplies', text: text, service_tags: ['volunteer_labor'], resource_tags: ['equipment'], ...base });
+  }
+
+  if (requests.length === 0) {
+    requests.push({ type: 'General', text: text, service_tags: [], resource_tags: [], ...base });
+  }
+  return { requests };
+}
+
+// ===== MATCHING ENGINE =====
+function scoreTracts(parsed, providerLatLon) {
+  const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+  
+  // Filter to current county only, exclude fire tracts
+  const candidates = TRACT_DATA.filter(t => 
+    t.county === currentCounty && 
+    !fireGeoids.has(t.geoid)
+  );
+
+  const benTags = parsed.beneficiary_tags || [];
+  const svcTags = parsed.service_tags || [];
+  
+  // Compute county Q3 for hands raised
+  const handsArr = candidates.map(t => raisedHands[t.geoid] || 0).sort((a,b)=>a-b);
+  const q3Hands = handsArr[Math.floor(handsArr.length * 0.75)] || 1;
+  const maxHands = Math.max(...handsArr, 1);
+  
+  const scored = candidates.map(t => {
+    const hands = raisedHands[t.geoid] || 0;
+    
+    // A: must have vuln relevance OR hands raised
+    const hasVulnFlag = t.total_flags > 0;
+    const hasHands = hands > 0;
+    if (!hasVulnFlag && !hasHands) return null;
+
+    // W1: VulnerabilityFit (0-1)
+    let vFit = 0;
+    if (benTags.includes('elderly') || benTags.includes('general')) vFit += t.flag_elderly;
+    if (benTags.includes('disability') || benTags.includes('general')) vFit += t.flag_disability;
+    if (benTags.includes('no_vehicle') || svcTags.includes('transportation') || benTags.includes('general')) vFit += t.flag_novehicle;
+    vFit = vFit / 3;
+
+    // W2: RequestVolume (0-1)
+    const rVol = hands / maxHands;
+
+    // W3: RequestCategoryMatch — compares helper's service tags against actual individual
+    // request categories in this tract. Boost tracts with unsolved requests matching the offer.
+    let reqMatch = 0;
+    if (svcTags.length > 0 && hands > 0) {
+      const tractReqs = (tractRequests[t.geoid] || []).filter(r => r.status !== 'solved');
+      const svcSet = new Set(svcTags);
+      let matchingReqs = 0;
+      tractReqs.forEach(r => {
+        const reqTags = r.service_tags || [];
+        const primaryTag = TYPE_TO_SERVICE_TAG[r.type];
+        if (primaryTag && svcSet.has(primaryTag)) { matchingReqs++; return; }
+        if (reqTags.some(tag => svcSet.has(tag))) { matchingReqs++; }
+      });
+      reqMatch = tractReqs.length > 0 ? matchingReqs / tractReqs.length : 0;
+    }
+
+    // W4: Proximity (0-1) — if provider location given
+    let prox = 0.5; // neutral if no location
+    if (providerLatLon && t.clat && t.clon) {
+      const dist = haversine(providerLatLon[0], providerLatLon[1], t.clat, t.clon);
+      prox = 1 / (1 + dist / 10); // 10km half-decay
+    }
+
+    const score = 0.25 * vFit + 0.15 * rVol + 0.25 * reqMatch + 0.35 * prox;
+    return { ...t, score, hands, vFit, rVol, reqMatch, prox };
+  }).filter(Boolean);
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 20);
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ===== TAB SWITCHING =====
+function switchResultsTab(tab) {
+  document.getElementById('tab-recs').classList.toggle('active', tab === 'recs');
+  document.getElementById('tab-requests').classList.toggle('active', tab === 'requests');
+  document.getElementById('tab-content-recs').classList.toggle('active', tab === 'recs');
+  document.getElementById('tab-content-requests').classList.toggle('active', tab === 'requests');
+  // Show/hide the show-more only for recs tab
+  const showMore = document.getElementById('results-show-more');
+  if (tab === 'recs' && recommendedTracts.length > numToShow) {
+    showMore.style.display = 'flex';
+  } else {
+    showMore.style.display = 'none';
+  }
+}
+
+// Store the last-viewed geoid so filter toggle can re-render
+let lastViewedRequestGeoid = null;
+
+// Update the Requests tab header and content for a tract (without switching to it)
+function updateRequestsTabContent(geoid) {
+  lastViewedRequestGeoid = geoid;
+  const t = tractByGeoid[geoid];
+  if (!t) return;
+  const allRequests = getRequestsForTract(geoid);
+  const activeRequests = allRequests.filter(r => r.status !== 'solved');
+  const activeCount = activeRequests.length;
+
+  // In requester mode, only show the user's own requests (no dummy data)
+  const isRequesterMode = currentRole === 'requester';
+  const displayRequests = isRequesterMode
+    ? allRequests.filter(r => mySubmittedRequestIds.has(r.request_id))
+    : allRequests;
+  const displayActiveCount = displayRequests.filter(r => r.status !== 'solved').length;
+
+  const tabBtn = document.getElementById('tab-requests');
+  tabBtn.style.display = '';
+  tabBtn.innerHTML = `${t.name.split(';')[0]} <span class="tab-badge">${displayActiveCount}</span>`;
+
+  // In requester mode, hide the Recommendations tab
+  document.getElementById('tab-recs').style.display = isRequesterMode ? 'none' : '';
+
+  const freshContent = document.getElementById('tab-content-requests');
+  freshContent.innerHTML = '';
+  const headerDiv = document.createElement('div');
+  headerDiv.style.cssText = 'font-size:12px;color:var(--text-muted);margin-bottom:4px;';
+  if (isRequesterMode) {
+    headerDiv.textContent = `Your requests \u2022 ${displayActiveCount} active request${displayActiveCount !== 1 ? 's' : ''}`;
+  } else {
+    headerDiv.textContent = `${t.county} County \u2022 Pop ${t.pop.toLocaleString()} \u2022 ${activeCount} active request${activeCount !== 1 ? 's' : ''}`;
+  }
+  freshContent.appendChild(headerDiv);
+
+
+  // Hide filters and categories in requester mode
+  if (!isRequesterMode) {
+    // Build filter tags bar
+    const tractTags = getTagsForTract(geoid);
+    if (tractTags.length > 0) {
+      const filterBar = document.createElement('div');
+      filterBar.className = 'filter-bar';
+      // Clear filters button
+      const clearBtn = document.createElement('span');
+      clearBtn.className = 'filter-tag clear-btn';
+      clearBtn.textContent = '✕ Clear filters';
+      clearBtn.onclick = () => { activeRequestFilter = null; updateRequestsTabContent(geoid); };
+      filterBar.appendChild(clearBtn);
+      // One pill per tag
+      tractTags.forEach(tag => {
+        const pill = document.createElement('span');
+        pill.className = `filter-tag${activeRequestFilter === tag ? ' active' : ''}`;
+        pill.textContent = TAG_LABELS[tag] || tag;
+        pill.onclick = () => {
+          activeRequestFilter = activeRequestFilter === tag ? null : tag;
+          updateRequestsTabContent(geoid);
+        };
+        filterBar.appendChild(pill);
+      });
+      freshContent.appendChild(filterBar);
+    }
+  }
+
+  // Apply filter — match by primary type tag so each request belongs to exactly one category
+  // In requester mode, skip filtering (already filtered to own requests)
+  let requests;
+  if (isRequesterMode) {
+    requests = displayRequests;
+  } else {
+    requests = activeRequestFilter
+      ? allRequests.filter(r => {
+          const primary = TYPE_TO_SERVICE_TAG[r.type];
+          return primary ? primary === activeRequestFilter : getServiceTags(r).includes(activeRequestFilter);
+        })
+      : allRequests;
+  }
+  const filteredCount = requests.length;
+
+  if (filteredCount > 0) {
+    requests.forEach(r => {
+      const isOwn = mySubmittedRequestIds.has(r.request_id);
+      const status = r.status || 'unsolved';
+      const statusLabel = status === 'in-progress' ? 'In Progress' : status === 'solved' ? 'Solved' : 'Unsolved';
+      const div = document.createElement('div');
+      div.className = `request-item${status === 'solved' ? ' solved' : ''}`;
+      div.id = `req-item-${r.request_id}`;
+      if (isOwn) {
+        div.style.cssText = 'border-color:var(--red);background:rgba(207,34,46,0.05);';
+      }
+      let html = '';
+      // Type + status badge
+      html += `<div class="req-type" style="${isOwn ? 'color:var(--red);' : ''}">${r.type}${isOwn ? ' (your request)' : ''} <span class="req-status ${status}">${statusLabel}</span></div>`;
+      html += `<div class="req-text" style="${isOwn ? 'color:var(--red);' : ''}">${r.text}</div>`;
+      if (r.address) {
+        html += `<div class="req-address">📍 ${r.address}</div>`;
+      }
+
+      // Action buttons based on role
+      html += '<div class="req-actions">';
+      if (isRequesterMode && isOwn) {
+        // Requester can cancel (if not solved) or mark solved (if in-progress)
+        if (status !== 'solved') {
+          html += `<button class="req-action-btn cancel" onclick="event.stopPropagation(); removeOwnRequest('${geoid}', '${r.request_id}')">✕ Cancel</button>`;
+        }
+        if (status === 'in-progress') {
+          html += `<button class="req-action-btn solve" onclick="event.stopPropagation(); markRequestSolved('${geoid}', '${r.request_id}')">✓ Mark Solved</button>`;
+        }
+      } else if (!isRequesterMode) {
+        // Helper can accept (unsolved → in-progress) or solve (in-progress → solved)
+        if (status === 'unsolved') {
+          html += `<button class="req-action-btn accept" onclick="event.stopPropagation(); acceptRequest('${geoid}', '${r.request_id}')">Accept</button>`;
+        }
+        if (status === 'in-progress') {
+          html += `<button class="req-action-btn solve" onclick="event.stopPropagation(); markRequestSolved('${geoid}', '${r.request_id}')">✓ Mark Solved</button>`;
+        }
+      }
+      html += '</div>';
+
+      div.innerHTML = html;
+      freshContent.appendChild(div);
+    });
+  } else {
+    const emptyDiv = document.createElement('div');
+    emptyDiv.style.cssText = 'font-size:12px;color:var(--text-muted);padding:12px 0;text-align:center;';
+    if (isRequesterMode) {
+      emptyDiv.textContent = 'You have no requests in this area';
+    } else {
+      emptyDiv.textContent = activeRequestFilter ? 'No requests matching this filter' : 'No requests in this tract';
+    }
+    freshContent.appendChild(emptyDiv);
+  }
+}
+
+// Show requests for a specific tract AND switch to the Requests tab
+function showRequestsTab(geoid) {
+  activeRequestFilter = null; // reset filter when switching tracts
+  updateRequestsTabContent(geoid);
+  document.getElementById('results-panel').classList.add('visible');
+  switchResultsTab('requests');
+  setTimeout(() => map.invalidateSize(), 300);
+}
+
+// Remove the user's own request
+function removeOwnRequest(geoid, requestId) {
+  if (!confirm('Are you sure you want to cancel this request?')) return;
+  // Remove from tractRequests
+  if (tractRequests[geoid]) {
+    tractRequests[geoid] = tractRequests[geoid].filter(r => r.request_id !== requestId);
+  }
+  // Sync raisedHands with actual request count
+  raisedHands[geoid] = (tractRequests[geoid] || []).length;
+  // Clear own request tracking
+  mySubmittedRequestIds.delete(requestId);
+  // Check if user still has requests in this geoid
+  const remaining = (tractRequests[geoid] || []).filter(r => mySubmittedRequestIds.has(r.request_id));
+  if (remaining.length === 0) {
+    mySubmittedGeoids.delete(geoid);
+  }
+  // Re-render
+  renderHandsMarkers();
+  showRequestsTab(geoid);
+}
+
+// ===== REQUEST STATUS ACTIONS =====
+// Helper accepts a request: unsolved → in-progress
+function acceptRequest(geoid, requestId) {
+  const requests = tractRequests[geoid] || [];
+  const req = requests.find(r => r.request_id === requestId);
+  if (req && req.status === 'unsolved') {
+    req.status = 'in-progress';
+    updateRequestsTabContent(geoid);
+  }
+}
+
+// Helper or requester marks a request as solved: in-progress → solved
+function markRequestSolved(geoid, requestId) {
+  const requests = tractRequests[geoid] || [];
+  const req = requests.find(r => r.request_id === requestId);
+  if (req && req.status === 'in-progress') {
+    req.status = 'solved';
+    // Update bubble count to reflect only active (non-solved) requests
+    raisedHands[geoid] = requests.filter(r => r.status !== 'solved').length;
+    renderHandsMarkers();
+    updateRequestsTabContent(geoid);
+  }
+}
+
+// ===== TAG HELPERS =====
+const TAG_LABELS = {
+  transportation: '🚗 Transport',
+  medical: '🏥 Medical',
+  food_distribution: '🍲 Food & Water',
+  volunteer_labor: '🧰 Supplies',
+  mobility_assistance: '♿ Mobility',
+  childcare: '👶 Childcare',
+  heavy_lifting: '💪 Heavy Lifting',
+  general: '📋 General'
+};
+
+const TYPE_TO_SERVICE_TAG = {
+  'Transportation': 'transportation',
+  'Medical': 'medical',
+  'Food & Water': 'food_distribution',
+  'Supplies': 'volunteer_labor',
+  'Mobility Help': 'mobility_assistance',
+  'Childcare': 'childcare',
+  'General': 'general',
+  'New Request': 'general'
+};
+
+function getServiceTags(r) {
+  if (r.service_tags && r.service_tags.length > 0) return r.service_tags;
+  // Derive from type field as fallback
+  const tag = TYPE_TO_SERVICE_TAG[r.type];
+  return tag ? [tag] : ['general'];
+}
+
+function getTagsForTract(geoid) {
+  const requests = getRequestsForTract(geoid);
+  const tags = new Set();
+  requests.forEach(r => {
+    const primary = TYPE_TO_SERVICE_TAG[r.type];
+    if (primary) tags.add(primary);
+    else getServiceTags(r).forEach(t => tags.add(t));
+  });
+  return [...tags];
+}
+
+function renderTagPills(tags) {
+  return tags.map(t => {
+    const label = TAG_LABELS[t] || t;
+    return `<span class="tag">${label}</span>`;
+  }).join(' ');
+}
+
+// ===== RENDER RECOMMENDATIONS =====
+function renderRecommendations(tracts, n) {
+  const show = tracts.slice(0, n);
+  const panel = document.getElementById('results-panel');
+  const list = document.getElementById('tab-content-recs');
+  const showMore = document.getElementById('results-show-more');
+
+  panel.classList.add('visible');
+  // Reset to recs tab, hide requests tab
+  document.getElementById('tab-recs').style.display = '';
+  document.getElementById('tab-requests').style.display = 'none';
+  switchResultsTab('recs');
+
+  // Set recommended geoids for thick red border and re-render map
+  recommendedGeoids = new Set(show.map(t => t.geoid));
+  renderMap();
+
+  // Fly to first recommended tract
+  if (show.length > 0) {
+    const first = show[0];
+    map.flyTo([first.clat, first.clon], 13, { duration: 1.5 });
+  }
+
+  // Build cards
+  list.innerHTML = '';
+  show.forEach((t, i) => {
+    const isSelected = selectedTracts.has(t.geoid);
+    const hands = t.hands || 0;
+    const requests = getRequestsForTract(t.geoid);
+
+    const card = document.createElement('div');
+    card.className = `tract-card${isSelected ? ' selected' : ''}`;
+    card.id = `card-${t.geoid}`;
+    card.style.cursor = 'pointer';
+    card.title = 'Click to zoom map to this tract';
+    const tractTags = getTagsForTract(t.geoid);
+    card.innerHTML = `
+      <div class="tract-card-header">
+        <div>
+          <div class="tract-name">${t.name.split(';')[0]}</div>
+          <div class="tract-county">${t.county} County &bull; Pop ${t.pop.toLocaleString()}</div>
+        </div>
+      </div>
+      <div class="tract-stats">
+        <span class="stat-pill hands" onclick="event.stopPropagation(); showRequestsTab('${t.geoid}')" title="Click to see requests">🙋 ${hands} requests ▾</span>
+      </div>
+      ${tractTags.length > 0 ? `<div style="margin-top:6px;line-height:1.8;">${renderTagPills(tractTags)}</div>` : ''}
+      ${isSelected ? '<div style="font-size:11px;color:var(--green);font-family:var(--font-mono);margin-top:6px;">✓ Selected on map</div>' : '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Click to zoom, then select on map</div>'}
+    `;
+    // Clicking the card flies the map and updates requests tab content (without switching to it)
+    card.addEventListener('click', () => {
+      map.flyTo([t.clat, t.clon], 13, { duration: 1.2 });
+      updateRequestsTabContent(t.geoid);
+    });
+    list.appendChild(card);
+  });
+
+  // Show more control
+  if (tracts.length > n) {
+    showMore.style.display = 'flex';
+    document.getElementById('num-show-input').value = n;
+  } else {
+    showMore.style.display = 'none';
+  }
+
+  setTimeout(() => map.invalidateSize(), 300);
+}
+
+// toggleRequestDetails is replaced by showRequestsTab
+
+function closeResultsPanel() {
+  document.getElementById('results-panel').classList.remove('visible');
+  document.getElementById('tab-requests').style.display = 'none';
+  document.getElementById('tab-recs').style.display = '';
+  switchResultsTab('recs');
+  recommendedGeoids.clear();
+  clearClickedTract();
+  renderMap(); // reset highlights
+  setTimeout(() => map.invalidateSize(), 300);
+}
+
+function updateNumShow(n) {
+  n = Math.max(1, Math.min(20, n || 3));
+  numToShow = n;
+  renderRecommendations(recommendedTracts, n);
+}
+
+function toggleSelectTract(geoid) {
+  if (selectedTracts.has(geoid)) {
+    selectedTracts.delete(geoid);
+    helperOnTheWay.delete(geoid);
+  } else {
+    selectedTracts.add(geoid);
+    helperOnTheWay.add(geoid);
+  }
+  // Update card visual in recommendations list
+  const card = document.getElementById(`card-${geoid}`);
+  if (card) {
+    card.classList.toggle('selected', selectedTracts.has(geoid));
+  }
+  renderMap();
+}
+
+// Update card visual state when tracts are selected via map
+function syncCardSelectButtons() {
+  selectedTracts.forEach(geoid => {
+    const card = document.getElementById(`card-${geoid}`);
+    if (card) {
+      card.classList.add('selected');
+    }
+  });
+}
+
+// ===== MATCH EXPLANATION =====
+function buildMatchExplanation(parsed, topTracts) {
+  const svcTags = parsed.service_tags || [];
+  const benTags = parsed.beneficiary_tags || [];
+  const offerType = parsed.offer_type || 'general';
+
+  // Describe what the helper offered
+  const offerParts = [];
+  if (svcTags.includes('transportation')) offerParts.push('transportation');
+  if (svcTags.includes('medical')) offerParts.push('medical assistance');
+  if (svcTags.includes('food_distribution')) offerParts.push('food & water');
+  if (svcTags.includes('mobility_assistance')) offerParts.push('mobility help');
+  if (svcTags.includes('volunteer_labor')) offerParts.push('volunteer labor');
+  if (svcTags.includes('childcare')) offerParts.push('childcare');
+  if (offerParts.length === 0) offerParts.push(offerType === 'general' ? 'general assistance' : offerType);
+
+  const offerStr = offerParts.join(', ');
+
+  // Describe why these tracts matched — general reasons across all tracts, not specific to one
+  const reasons = [];
+  if (topTracts.length > 0) {
+    const anyHasRequests = topTracts.some(t => t.hands > 0);
+    const anyHighVFit = topTracts.some(t => t.vFit > 0.3);
+    const anyCloseProx = topTracts.some(t => t.prox > 0.6);
+
+    const anyReqCategoryMatch = topTracts.some(t => t.reqMatch > 0.2);
+
+    if (anyReqCategoryMatch) reasons.push(`requests specifically matching your offer of ${offerStr}`);
+    else if (anyHasRequests) reasons.push('active requests for help');
+    if (anyHighVFit && benTags.includes('elderly')) reasons.push('high elderly populations');
+    if (anyHighVFit && (benTags.includes('disability') || svcTags.includes('medical'))) reasons.push('residents with disabilities');
+    if (anyHighVFit && (benTags.includes('no_vehicle') || svcTags.includes('transportation'))) reasons.push('households without vehicles');
+    if (anyCloseProx) reasons.push('proximity to your location');
+  }
+
+  if (reasons.length === 0) reasons.push('community need in the area');
+
+  return `Based on your offer of <strong>${offerStr}</strong>, these tracts were matched because they have ${reasons.join(', ')}.`;
+}
+
+// ===== PROVIDER FLOW =====
+async function handleProviderSubmission(text) {
+  const loading = document.getElementById('sidebar-loading');
+  loading.classList.add('visible');
+  isProcessing = true;
+  document.getElementById('submit-btn').disabled = true;
+
+  // Get provider location if provided — geocode via Nominatim
+  const locText = document.getElementById('location-input').value.trim();
+  let providerLatLon = null;
+  if (locText) {
+    providerLatLon = await geocodeAddress(locText);
+    if (!providerLatLon) {
+      providerLatLon = COUNTY_CENTERS[currentCounty] || null;
+    }
+  }
+
+  // Drop pin for helper location
+  setUserLocationPin(providerLatLon, 'You (Helper)');
+
+  // Call LLM
+  let parsed;
+  try {
+    parsed = await callDeepSeek(text);
+    offerParsed = parsed;
+  } catch(e) {
+    parsed = fallbackExtract(text);
+    offerParsed = parsed;
+  }
+
+  loading.classList.remove('visible');
+
+  // Score and rank
+  recommendedTracts = scoreTracts(parsed, providerLatLon);
+  numToShow = 3;
+
+  // Show match explanation in sidebar
+  const statusDiv = document.getElementById('sidebar-status');
+  const tagsDiv = document.getElementById('parsed-tags');
+  statusDiv.classList.add('visible');
+  document.querySelector('#sidebar-status h4').textContent = 'Why These Tracts?';
+  const explanation = buildMatchExplanation(parsed, recommendedTracts);
+  tagsDiv.innerHTML = `
+    <div style="font-size:12px;line-height:1.6;color:var(--text-secondary);">${explanation}</div>
+  `;
+
+  if (recommendedTracts.length === 0) {
+    const list = document.getElementById('results-list');
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">No matching tracts found. Try switching counties.</div>';
+    document.getElementById('results-panel').classList.add('visible');
+  } else {
+    renderRecommendations(recommendedTracts, numToShow);
+  }
+
+  isProcessing = false;
+  document.getElementById('submit-btn').disabled = false;
+}
+
+// ===== REQUESTER FLOW =====
+async function handleRequesterSubmission(text) {
+  const loading = document.getElementById('sidebar-loading');
+  loading.classList.add('visible');
+  isProcessing = true;
+  document.getElementById('submit-btn').disabled = true;
+
+  const county = currentCounty;
+  const eligible = TRACT_DATA.filter(t => t.county === county && !Object.values(FIRE_TRACTS).includes(t.geoid) && t.total_flags > 0);
+  if (eligible.length === 0) {
+    loading.classList.remove('visible');
+    isProcessing = false;
+    document.getElementById('submit-btn').disabled = false;
+    return;
+  }
+
+  // Geocode the requester's address to find their census tract or nearest tract
+  const locText = document.getElementById('location-input').value.trim();
+  let requesterLatLon = null;
+  if (locText) {
+    requesterLatLon = await geocodeAddress(locText);
+  }
+
+  // Drop pin for requester location
+  setUserLocationPin(requesterLatLon, 'You (Requester)');
+
+  // Check if the requester's location falls in or nearest to a fire-evacuation tract
+  if (requesterLatLon) {
+    const fireGeoids = new Set(Object.values(FIRE_TRACTS));
+    const allCountyTracts = TRACT_DATA.filter(t => t.county === county);
+    let nearestTract = null, nearestDist = Infinity;
+    allCountyTracts.forEach(t => {
+      const d = haversine(requesterLatLon[0], requesterLatLon[1], t.clat, t.clon);
+      if (d < nearestDist) { nearestDist = d; nearestTract = t; }
+    });
+    if (nearestTract && fireGeoids.has(nearestTract.geoid)) {
+      loading.classList.remove('visible');
+      isProcessing = false;
+      document.getElementById('submit-btn').disabled = false;
+      // Show fire-zone warning
+      const statusDiv = document.getElementById('sidebar-status');
+      const tagsDiv = document.getElementById('parsed-tags');
+      statusDiv.classList.add('visible');
+      document.querySelector('#sidebar-status h4').textContent = '⚠️ Fire-Evacuation Zone';
+      tagsDiv.innerHTML = `
+        <div style="font-size:12px;line-height:1.6;color:var(--text-muted);">
+          Your location falls within a designated <strong style="color:var(--red);">fire-evacuation area</strong> (${nearestTract.name.split(';')[0]}).
+          Functionality for this area is disabled.<br><br>
+          Please contact <strong style="color:var(--text);">911</strong> for emergency help.
+        </div>
+      `;
+      map.flyTo([nearestTract.clat, nearestTract.clon], 14, { duration: 1.5 });
+      return;
+    }
+  }
+
+  // Parse the request text via LLM to extract categories and split multi-need requests
+  let parsed;
+  try {
+    parsed = await callDeepSeekRequest(text);
+  } catch(e) {
+    parsed = fallbackExtractRequest(text);
+  }
+
+  loading.classList.remove('visible');
+
+  let pick;
+  if (requesterLatLon) {
+    let minDist = Infinity;
+    pick = eligible[0];
+    eligible.forEach(t => {
+      const d = haversine(requesterLatLon[0], requesterLatLon[1], t.clat, t.clon);
+      if (d < minDist) { minDist = d; pick = t; }
+    });
+  } else {
+    const sorted = eligible.sort((a,b) => b.total_flags - a.total_flags).slice(0, 10);
+    pick = sorted[Math.floor(Math.random() * sorted.length)];
+  }
+
+  // Create one request entry per parsed need
+  const parsedRequests = parsed.requests || [{ type: 'General', text: text, service_tags: [], resource_tags: [], beneficiary_tags: ['general'] }];
+  if (!tractRequests[pick.geoid]) tractRequests[pick.geoid] = [];
+
+  parsedRequests.forEach((req, i) => {
+    const newRequestId = `NEW-${Date.now()}-${i}`;
+    raisedHands[pick.geoid] = (raisedHands[pick.geoid] || 0) + 1;
+    tractRequests[pick.geoid].push({
+      request_id: newRequestId,
+      type: req.type || 'General',
+      text: req.text || text,
+      status: 'unsolved',
+      address: locText || '',
+      service_tags: req.service_tags || [],
+      resource_tags: req.resource_tags || [],
+      beneficiary_tags: req.beneficiary_tags || []
+    });
+    mySubmittedRequestIds.add(newRequestId);
+  });
+  mySubmittedGeoids.add(pick.geoid);
+
+  renderHandsMarkers();
+  map.flyTo([pick.clat, pick.clon], 14, { duration: 1.5 });
+  showRequestsTab(pick.geoid);
+
+  isProcessing = false;
+  document.getElementById('submit-btn').disabled = false;
+}
+
+// ===== MAIN SEND HANDLER =====
+async function handleSend() {
+  if (isProcessing) return;
+  if (!currentRole) return;
+
+  const locInput = document.getElementById('location-input');
+  const loc = locInput.value.trim();
+  if (!loc) {
+    locInput.style.borderColor = '#cf222e';
+    locInput.placeholder = '⚠ Please enter your full address first';
+    locInput.focus();
+    setTimeout(() => {
+      locInput.style.borderColor = '';
+      locInput.placeholder = '123 Main St, City, CA';
+    }, 3000);
+    return;
+  }
+
+  const textarea = document.getElementById('resource-textarea');
+  const text = textarea.value.trim();
+  if (!text) return;
+
+  if (currentRole === 'provider') {
+    await handleProviderSubmission(text);
+  } else {
+    await handleRequesterSubmission(text);
+  }
+}
+
+// Keyboard submit
+document.getElementById('resource-textarea').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+});
+
+// ===== COUNTY NAVIGATION =====
+function flyToCounty(county) {
+  currentCounty = county;
+  document.querySelectorAll('.county-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent === county);
+  });
+  const center = COUNTY_CENTERS[county];
+  const zoom = COUNTY_ZOOM[county];
+  map.flyTo(center, zoom, { duration: 1.5 });
+  renderHandsMarkers();
+  closeResultsPanel();
+}
+
+// ===== GEOCODE ADDRESS VIA NOMINATIM =====
+async function geocodeAddress(address) {
+  try {
+    const encoded = encodeURIComponent(address);
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=1`, {
+      headers: { 'Accept-Language': 'en' }
+    });
+    const data = await resp.json();
+    if (data && data.length > 0) {
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    }
+  } catch(e) {
+    console.warn('Nominatim geocoding failed:', e);
+  }
+  return null;
+}
+
+// ===== INIT =====
+// Load requests from CSV, then render map
+loadData().then(() => loadRequestsCSV());
+
+</script>
+</body>
+</html>
