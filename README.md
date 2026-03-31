@@ -36,7 +36,7 @@ Improved risk dashboards, real-time alerts, and support systems for people with 
 **Project Title**: Community Evacuation Resource Matcher (CERM)  
 **Team Name**: Ramblin' Pathfinders  
 **University**: Georgia Institute of Technology  
-**Course**: N/A 
+**Course**: N/A   
 **Term**: Spring 2026  
 
 **Team Members**:  
@@ -160,7 +160,7 @@ To prevent misuse, census tracts currently within active fire perimeters are exc
 Users located in these areas are redirected to emergency services and immediate evacuation guidance rather than community coordination features.
 
 <p align="center">
-  <img src="https://www.widsworldwide.org/wp-content/uploads/2023/05/WiDS_logo_nav.png" alt="fire_intersect" width="250"/>
+  <img src="images/fire_intersect.png" alt="fire_intersect" width="250"/>
 </p>
 
 
