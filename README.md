@@ -15,19 +15,8 @@
 
 This route focuses on analyzing how and when evacuation alerts are triggered — and how we can improve timeliness and fairness in communication, especially for vulnerable populations.
 
-**Suggested Starting Points:**
-- Compare `date_modified` and `effective` fields in WatchDuty to identify alert lags.
-- Integrate NOAA weather data (wind, humidity) to model fire spread and shrinking evacuation windows.
-- Map low-mobility zones (e.g. road access, car ownership) against health vulnerabilities (e.g. asthma, elderly population).
-- Build a risk surface using perimeter snapshots, alert timestamps, and report logs to assess delays.
-- Use `timestamp_reported` and classification reports to study "pending" alerts and delays.
-
 **Why this matters:**  
 Improved risk dashboards, real-time alerts, and support systems for people with disabilities, pets, or other special needs.
-
----
-
-**Clearly state your chosen route at the top of your notebook and slide deck.** Your work should combine **data analysis**, **modeling**, and **real-world relevance** to propose actionable insights.
 
 ---
 
@@ -40,7 +29,7 @@ Improved risk dashboards, real-time alerts, and support systems for people with 
 **Term**: Spring 2026  
 
 **Team Members**:  
-- Riya Bharathwaj (GitHub: [@username](https://github.com/username))  
+- Riya Bharathwaj
 - Tingya Chang
 - Saehee Eom
 - Tanmayee Kolli
