@@ -121,7 +121,9 @@ Ranks tracts and displays the top recommendations to the helper. Proximity carri
 To prevent misuse, census tracts currently within active fire perimeters are excluded from matching entirely. 
 
 Users located in these areas are redirected to emergency services and immediate evacuation guidance rather than community coordination features.
+
 ![FireIntersect](images/fireIntersect.gif)
+
 ## 3.5 Community Coordination Mechanism
 Users can mark when they are providing help and when requests have been fulfilled, allowing demand signals to update dynamically. 
 
