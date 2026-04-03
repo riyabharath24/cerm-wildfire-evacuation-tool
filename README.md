@@ -37,57 +37,46 @@ Improved risk dashboards, real-time alerts, and support systems for people with 
 
 ------
 
-## **Abstract**
-
+# Abstract
 Wildfires in California create urgent, high-stakes evacuation scenarios where timely and equitable access to support resources can significantly impact outcomes. However, existing tools primarily focus on fire prediction and monitoring, rather than enabling real-time, community-level coordination of assistance.
 
 In this project, we present a **community-driven evacuation support system** that connects individuals offering help with neighborhoods in need, using a combination of demographic vulnerability data, real-time request signals, and geographic proximity. Our approach integrates **rule-based matching with lightweight LLM-assisted categorization** to recommend high-priority census tracts where assistance is most needed.
 
 Unlike fully automated systems, our solution emphasizes **decision support rather than control**, enabling users to make informed choices while ensuring privacy and avoiding misuse in high-risk active fire zones.
 
-------
-
-## **1. Introduction**
-
+# 1. Introduction
 Wildfire evacuations disproportionately impact vulnerable populations, including:
-
 - elderly residents, 
 - people with disabilities, 
 - and households without vehicle access. 
 
 These groups often face **structural barriers to evacuation**, such as limited mobility, lack of transportation, or reduced access to timely information.
 
-While critical tools such as fire perimeter tracking and evacuation alerts provide situational awareness, they do not address a fundamental coordination gap: **how can communities organize in real time to help vulnerable residents evacuate?** 
+While critical tools such as fire perimeter tracking and evacuation alerts provide situational awareness, they do not address a fundamental coordination gap: how can communities **organize in real time to help vulnerable residents evacuate?** 
 
 This project directly addresses that question by designing a system that:
-
 - surfaces **where help is most needed**, and 
 - enables individuals and community groups to **self-organize and provide assistance**.
 
-The system is designed for **in-the-moment use** — not pre-disaster planning — and includes safeguards to ensure it is **not used in active emergency zones**, where emergency services (e.g., 911) and immediate evacuation are more appropriate.
+The system is designed for **in-the-moment use** and includes safeguards to ensure it is **not used in active emergency zones**, where emergency services (e.g., 911) and immediate evacuation are more appropriate.
 
-## **2. Data Analysis**
-
+# 2. Data Analysis
 The system draws on three primary data sources:
 
-### **Fire Perimeter Data**
+## Fire Perimeter Data
+Historical records on fire perimeter are sourced from **Watch Duty** and **CalFire**. This data was used to determine which census tracts are affected by wildfire and are used to enforce the system's safety constraint (see Section 3.4).
 
-Historical records on fire perimeter are sourced from **Watch Duty** and **CalFire**. These data determine which census tracts are affected by wildfire and are used to enforce the system's safety constraint (see Section 3.4).
-
-### **Demographic Vulnerability Data**
-
+## Demographic Vulnerability Data
 Census tract-level demographic data from the **American Community Survey** and the **US Census Bureau** captures three indicators of structural evacuation vulnerability:
-
 - Percentage of residents aged 65 or older
 - Percentage of residents with disabilities
 - Percentage of households without vehicle access
 
-Each tract is flagged if it exceeds the 75th percentile (Q3) within its county on any of these indicators — a per-county threshold that accounts for regional variation. The total number of flags serves as a proxy for evacuation difficulty. 
+Counties with at least 50 census tracts and meaningful variation in at least one demographic dimension (elderly %, disability %, or car-free households) were selected for analysis. The tract count requirement ensures the county has enough geographic granularity to meaningfully distinguish high-need areas from typical ones. The variation requirement ensures the county has real demographic heterogeneity. Without it, all tracts look alike and resource prioritization across the county becomes uninformative.
 
 Our prototype development focused on three counties with elevated wildfire risk: **Butte, Shasta, and Riverside**.
 
-### **Request Data (Prototype)**
-
+## Request Data (Prototype)
 User-submitted and simulated requests capture unmet needs such as transportation, medical assistance, and supplies. 
 
 These are aggregated at the census tract level to produce two signals: 
@@ -95,85 +84,61 @@ These are aggregated at the census tract level to produce two signals:
 - the volume of active requests and 
 - the categories of need that remain unresolved.
 
-## **3. System Design and Methodology**
-
+# 3. System Design and Methodology
 The system consists of three components: a user input layer, an LLM-based categorization pipeline, and a matching engine.
 
-### **3.1 User Input Layer**
-
+## 3.1 User Input Layer
 Two types of users interact with the system. 
 
 **Requesters**
-
 - submit free-text descriptions of their needs and 
 - can view aggregate demand across census tracts.
 
 **Helpers**
-
 - submit descriptions of the resources or services they can offer and 
 - receive ranked recommendations for where to direct their assistance.
 
-### **3.2 LLM-Based Categorization**
-
-A large language model (DeepSeek-V3-0324) converts free-text into structured, machine-readable tags. **The LLM is used exclusively for categorization — not decision-making — which limits hallucination risk and preserves interpretability**. 
-
+## 3.2 LLM-Based Categorization
+A large language model (DeepSeek-V3-0324) converts free-text into structured, machine-readable tags. **The LLM is used exclusively for categorization (not decision-making) which limits hallucination risk and preserves interpretability.**
+ 
 The model is prompted to extract three tag categories:
-
 - **Service tags**: transportation, mobility assistance, heavy lifting, medical, food distribution, volunteer labor, childcare
 - **Resource tags**: water, food, medicine, clothing, fuel, equipment, tools, first aid
 - **Beneficiary tags**: elderly, disability, no vehicle, families, children, general
 
 The prompt instructs the model to return only valid JSON with no additional explanation, ensuring consistent structured output for downstream matching.
 
-### **3.3 Matching Engine**
-
+## 3.3 Matching Engine
 Each census tract is scored against a helper's input using four weighted components:
+![Matching Engine](https://www.googleapis.com/download/storage/v1/b/kaggle-user-content/o/inbox%2F29904584%2Fd2476112b06c3728827588947c918bd1%2FScreenshot%202026-04-03%20at%2010.31.14AM.png?generation=1775226689156462&alt=media)
+**Final Score**
 
-| **Component**                     | **Weight** | **Description**                                              |
-| --------------------------------- | ---------- | ------------------------------------------------------------ |
-| Vulnerability Fit (vFit)          | 25%        | Alignment between the helper's target beneficiaries and the tract's vulnerability flags |
-| Request Volume (rVol)             | 15%        | Normalized count of active requests within the tract         |
-| Request Category Match (reqMatch) | 25%        | Proportion of unresolved requests that match the helper's offered services |
-| Proximity (prox)                  | 35%        | Distance between the helper and the tract centroid, with a decay half-life of ~10 km |
+*Score = 0.25 * vFit + 0.15 * rVol + 0.25 * reqMatch + 0.35 * prox*
 
-### **Final Score**
+Ranks tracts and displays the top recommendations to the helper. Proximity carries the highest weight to minimize travel time under emergency conditions.
 
-*Score = 0.25 \* vFit + 0.15 \* rVol + 0.25 \* reqMatch + 0.35 \* prox*
-
-ranks tracts and displays the top recommendations to the helper. Proximity carries the highest weight to minimize travel time under emergency conditions.
-
-### **3.4 Fire-Aware Safety Constraint**
-
+## 3.4 Fire-Aware Safety Constraint
 To prevent misuse, census tracts currently within active fire perimeters are excluded from matching entirely. 
 
 Users located in these areas are redirected to emergency services and immediate evacuation guidance rather than community coordination features.
-
-<p align="center">
-  <img src="images/fire_intersect.png" alt="fire_intersect" width="750"/>
-</p>
-
-
-
-### **3.5 Community Coordination Mechanism**
-
+![FireIntersect](images/fireIntersect.gif)
+## 3.5 Community Coordination Mechanism
 Users can mark when they are providing help and when requests have been fulfilled, allowing demand signals to update dynamically. 
 
-The system **does not enforce allocation** — it provides recommendations while users retain full decision-making control.
+The system **does not enforce allocation**, but provides recommendations while users retain full decision-making control.
 
-### **3.6 Privacy Protection**
-
+## 3.6 Privacy Protection
 Privacy is protected by design. In the current prototype:
 
-- **Requesters**: see only the total number of open requests per census tract — no details of individual requests
+- **Requesters**: see only the total number of open requests per census tract, and no details of individual requests
 - **Helpers**: see a request's address (all addresses in the prototype are simulated using non-residential locations) but no personal contact information
 
 Future versions of the system will strengthen these protections further:
-
-- Before a match is made, helpers will see only a rough area — not a precise address
+- Before a match is made, helpers will see only a rough area, not a precise address
 - Full address and contact details will only be revealed once both sides have agreed to connect
 - User identity authentication will be introduced to add another layer of trust and accountability
 
-### **3.7 Technical Implementation**
+## 3.7 Technical Implementation
 
 **Frontend**
 
@@ -183,98 +148,86 @@ The frontend is a single-page application built with HTML, CSS, and JavaScript, 
 
 The backend is a Python data pipeline (pandas, geopandas) handling census data cleaning and spatial processing. LLM calls are proxied through a Vercel serverless function.
 
-## **4. Evaluation and Performance Metrics**
+# 4. Evaluation and Performance Metrics
+## 4.1. Metrics
 
-Due to the absence of real-time ground-truth evacuation outcomes, we evaluate our system using simulated request data and proxy metrics. These metrics assess both matching quality and real-world impact.
+Due to the absence of real-time ground-truth evacuation outcomes, we propose **five performance metrics and two adoption metrics** to evaluate the effectiveness of our system. The performance metrics focus on how well the platform supports evacuation coordination and resource matching during wildfire events, while the adoption metrics evaluate real-world usage and growth from a deployment perspective.
 
-**4.1 Current Metrics**
+### 4.1.1. Performance Metrics
+**a. Evacuation Efficiency**
 
-These metrics evaluate **how effectively the matching algorithm assigns helpers to communities** based on proximity, vulnerability, and demand, using **simulated request data** in the absence of real-world deployment signals.
+Measures the improvement in evacuation time relative to historical baselines.
 
-**Alignment Score**
+$$\frac{\text{Avg. Evacuation Time Difference}}{\text{Avg. Evacuation Time Before Deployment}} \times 100$$
 
-The weighted score measures how well a helper matches a census tract based on proximity, vulnerability fit, request category match, and demand level.
+This metric estimates how much evacuation time could be reduced through improved coordination and faster resource allocation enabled by the platform.
 
-- **High**: helper is assigned to the most appropriate location
-- **Low**: suboptimal or inefficient matching
+**b. Request Alignment Score**
 
-**Demand Coverage**
+$$\frac{\text{Helpers assigned to tracts with category-matched requests}}{\text{Total helpers assigned to tracts with requests}} \times 100$$
 
-This represents the percentage of total requests that receive at least one matched helper.
+Evaluates how effectively the matching engine assigns helpers to locations where their offered resources directly correspond to the needs expressed by residents.
 
-- **High**: system successfully distributes available help
-- **Low**: unmet needs remain in the system 
+**c. Demand Coverage**
+$$\frac{\text{Requests resolved within T hours}}{\text{Total distinct requests submitted within T hours}} \times 100$$
 
-We compare the proposed method against three simplified baselines across the two metrics, using simulated data. 
+Measures the proportion of requests that are successfully addressed within a given time window, indicating how well the system mobilizes community resources during an emergency.
 
-| **Method**         | **Alignment Score** | **Demand Coverage** |
-| ------------------ | ------------------- | ------------------- |
-| Random             | Low                 | Low                 |
-| Distance-only      | Medium              | Low                 |
-| Vulnerability-only | Medium              | Medium              |
-| **Our Method**     | **High**            | **High**            |
+**d. Vulnerable Group Demand Coverage**
+Demand Coverage calculated separately for each vulnerable demographic group:
+- Elderly residents
+- People with disabilities
+- Households without vehicles
+This metric ensures that support reaches the populations most likely to face evacuation barriers.
 
-**4.2 Future Metrics**
+**e. Mean Accepted Recommendation Rank**
+Average rank of the census tracts that helpers ultimately choose after receiving recommendations from the system. Ideally, this value should be close to 1, meaning users frequently accept the highest-ranked recommendations. Higher values may indicate that the recommendation algorithm is less aligned with user decisions.
 
-These metrics evaluate whether the system **actually improves evacuation outcomes** and overall effectiveness after deployment, aligning directly with the goal of reducing evacuation delays and improving community response.
+### 4.1.2 Adoption Metrics
+**a. User Signups**
 
-**Evacuation Efficiency**
+Number of registered users on the platform and quarter-over-quarter (QoQ) growth. This metric reflects overall community engagement and the scalability of the platform.
 
-This measures the reduction in evacuation time compared to baseline scenarios.
+**b. Active Users During Fire Events**
 
-- **Measurement**:
-  - Historical vs. post-deployment evacuation time comparison
-  - Simulation: matched allocation vs. random or baseline strategies
-- **Interpretation**: Direct impact on evacuation speed and coordination effectiveness
+Number of users who actively utilize the platform during a wildfire incident. This metric captures real-world relevance and indicates whether the system is being used when it matters most, during active emergencies.
 
-**Adoption Metrics**
+## 4.2. Performance Insights
+![CERM Method Comparison](images/MetricPlot.png)
 
-Adoption metrics evaluate system usage and engagement.
-
-- **Examples:**
-  - Number of active users (helpers + requesters)
-  - Number of requests submitted
-  - Match completion rate
-- **Interpretation:** Reflects scalability and real-world usability 
-
-**4.3 Performance Insights**
+CERM takes distance and vulnerability of demographics of areas into account, beating the other single-factor methods or random matching baseline.
 
 From simulation and early testing:
-
-- Strong performance in **high-engagement areas with sufficient volunteer supply**
+- Strong performance in high-engagement areas with sufficient volunteer supply
 - Performance decreases in areas with:
-  - Low volunteer density
-  - Highly variable or complex needs 
+   - Low volunteer density
+   - Highly variable or complex needs 
 
-## **5. Conclusion and Impact**
-
+# 5. Conclusion and Impact
 This project demonstrates how a lightweight, interpretable system can support **real-time**, **community-driven evacuation assistance** during wildfire events. 
 
 By combining demographic vulnerability signals, live request data, and geographic proximity within a transparent scoring framework, the system **bridges the gap between fire awareness tools and on-the-ground community coordination**.
 
 The system has the potential to:
-
 - improve evacuation support access for vulnerable populations, 
 - enable faster decentralized response through community self-organization, and 
-- provide meaningful decision support under time pressure — without over-automating choices that carry real human stakes.
+- provide meaningful decision support under time pressure, without over-automating choices that carry real human stakes.
 
-**Limitations**
-
+## Limitations
 - Reliance on aggregated census data with no household-level precision
 - Simulated request data in the prototype; no real-world validation yet
 - Static scoring weights not tuned to specific disaster contexts
 - No real-time fire spread modeling
 - LLM misclassification risk, particularly for ambiguous or informal language
 
-**Future Work**
-
+## Future Work
 - Integration with real-time shelter and emergency data (Cal OES, Red Cross)
 - Expansion to additional counties and states
 - Incorporation of road accessibility and geographic isolation features
 - Retrospective evaluation using historical evacuation scenarios
 - Dynamic weight tuning based on real-world feedback
 
-## **References**
+# References
 
 [1] Melton, C. C., et al. (2023). Wildfires and older adults: A scoping review of impacts, risks, and interventions. International Journal of Environmental Research and Public Health.
 
@@ -286,11 +239,12 @@ The system has the potential to:
 
 [5] Sun, Y., et al. (2024). Social vulnerabilities and wildfire evacuations: A case study of the 2019 Kincade Fire.
 
-[6] FEMA. (2011). *A Whole Community Approach to Emergency Management: Principles, Themes, and Pathways for Action.*
+[6] FEMA. (2011). A Whole Community Approach to Emergency Management: Principles, Themes, and Pathways for Action.
 
-[7] National Academies of Sciences, Engineering, and Medicine. (2019). *Evacuation Decision Making in Disasters.*
+[7] National Academies of Sciences, Engineering, and Medicine. (2019). Evacuation Decision Making in Disasters.
 
-[8] Aldrich, D. P., & Meyer, M. A. (2015). Social capital and community resilience. *American Behavioral Scientist.*
+[8] Aldrich, D. P., & Meyer, M. A. (2015). Social capital and community resilience. American Behavioral Scientist.
+
 
 
 ## Team Contributions
